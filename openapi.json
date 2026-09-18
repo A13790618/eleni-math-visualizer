@@ -7,8 +7,12 @@
   },
   "servers": [
     {
+      "url": "https://eleni-math-visualizer.onrender.com",
+      "description": "Live Public HTTPS Server (Render)"
+    },
+    {
       "url": "https://eleniaggelikh-greek-math-visualizer.hf.space",
-      "description": "Live Public HTTPS Server (Hugging Face Space)"
+      "description": "Previous Server (Hugging Face Space — may be unavailable)"
     },
     {
       "url": "http://127.0.0.1:5000",
