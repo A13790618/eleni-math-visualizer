@@ -1,0 +1,610 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Greek High School Math Visualization API",
+    "description": "High-quality geometric shape constructor and mathematical function plotter for Greek high school education.",
+    "version": "1.1.0"
+  },
+  "servers": [
+    {
+      "url": "https://eleniaggelikh-greek-math-visualizer.hf.space",
+      "description": "Live Public HTTPS Server (Hugging Face Space)"
+    },
+    {
+      "url": "http://127.0.0.1:5000",
+      "description": "Local Development Server"
+    }
+  ],
+  "paths": {
+    "/api/geometry": {
+      "post": {
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Draw geometric shapes (Triangles, Circles, Polygons, Angles)",
+        "operationId": "drawGeometry",
+        "description": "Draws coordinate geometric figures with Greek lettering and constructions. Solid requests also return a viewer_url for a touch-friendly, rotatable 3D model.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeometryRequest"
+              },
+              "examples": {
+                "triangleWithAltitude": {
+                  "summary": "Triangle with altitude from A",
+                  "value": {
+                    "shape": "triangle",
+                    "vertices": [
+                      [
+                        0,
+                        0
+                      ],
+                      [
+                        4,
+                        0
+                      ],
+                      [
+                        2,
+                        3
+                      ]
+                    ],
+                    "labels": [
+                      "A",
+                      "B",
+                      "C"
+                    ],
+                    "features": [
+                      "altitude_from_A"
+                    ],
+                    "title": "Τρίγωνο ΑΒΓ με ύψος",
+                    "use_greek": true
+                  }
+                },
+                "circleWithTangent": {
+                  "summary": "Circle with radius and tangent",
+                  "value": {
+                    "shape": "circle",
+                    "center": [
+                      0,
+                      0
+                    ],
+                    "radius": 3,
+                    "features": [
+                      "radius_line",
+                      "tangent"
+                    ],
+                    "title": "Κύκλος με ακτίνα και εφαπτομένη"
+                  }
+                },
+                "circleWithInscribedAngle": {
+                  "summary": "Circle with chord and inscribed angle",
+                  "value": {
+                    "shape": "circle",
+                    "center": [
+                      0,
+                      0
+                    ],
+                    "radius": 3,
+                    "features": [
+                      "chord",
+                      "inscribed_angle"
+                    ],
+                    "point_angles": [
+                      20,
+                      145,
+                      270
+                    ],
+                    "point_labels": [
+                      "A",
+                      "B",
+                      "C"
+                    ]
+                  }
+                },
+                "cylinderWithDimensions": {
+                  "summary": "Cylinder with actual dimensions",
+                  "value": {
+                    "shape": "cylinder",
+                    "dimensions": {
+                      "radius": 2,
+                      "height": 7
+                    },
+                    "title": "Κύλινδρος"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Image successfully generated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid parameters"
+          },
+          "500": {
+            "description": "Server error during image generation"
+          }
+        }
+      }
+    },
+    "/api/plot": {
+      "post": {
+        "security": [
+          {
+            "ApiKeyAuth": []
+          }
+        ],
+        "summary": "Plot algebraic and calculus functions",
+        "operationId": "plotFunctions",
+        "description": "Plots 1 or more mathematical functions (polynomial, trigonometric, rational, exponential) with roots, extrema (min/max), asymptotes, intercepts, and shaded definite integral areas.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlotRequest"
+              },
+              "examples": {
+                "parabola": {
+                  "summary": "Parabola with roots and minimum",
+                  "value": {
+                    "formulas": [
+                      "y=x**2-3*x+2"
+                    ],
+                    "x_range": [
+                      -2,
+                      5
+                    ],
+                    "show_features": [
+                      "roots",
+                      "extrema",
+                      "intercepts"
+                    ],
+                    "title": "f(x) = x² - 3x + 2"
+                  }
+                },
+                "integralArea": {
+                  "summary": "Definite integral shaded area",
+                  "value": {
+                    "formulas": [
+                      "y=x**2"
+                    ],
+                    "x_range": [
+                      -3,
+                      3
+                    ],
+                    "shade": {
+                      "x_start": 0,
+                      "x_end": 2
+                    },
+                    "title": "Εμβαδόν κάτω από f(x) = x²"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Plot successfully generated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid formula or range"
+          },
+          "500": {
+            "description": "Server error during plotting"
+          }
+        }
+      }
+    },
+    "/api/health": {
+      "get": {
+        "summary": "Health check",
+        "operationId": "healthCheck",
+        "responses": {
+          "200": {
+            "description": "Server is healthy",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "description": "Service status"
+                    },
+                    "service": {
+                      "type": "string",
+                      "description": "Service name"
+                    },
+                    "version": {
+                      "type": "string",
+                      "description": "API version"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-API-Key",
+        "description": "Owner-configured service key. The server permits unauthenticated calls only when API_KEY is unset."
+      }
+    },
+    "schemas": {
+      "GeometryRequest": {
+        "type": "object",
+        "required": [
+          "shape"
+        ],
+        "properties": {
+          "shape": {
+            "type": "string",
+            "enum": [
+              "triangle",
+              "circle",
+              "quadrilateral",
+              "square",
+              "rectangle",
+              "parallelogram",
+              "rhombus",
+              "trapezoid",
+              "angle",
+              "parallel_lines",
+              "parallel",
+              "cylinder",
+              "cone",
+              "pyramid",
+              "square_pyramid",
+              "prism",
+              "cube",
+              "sphere",
+              "3d_shape"
+            ],
+            "description": "Type of geometric shape to draw (2D Euclidean or 3D Solid Stereometry)"
+          },
+          "vertices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "description": "A single 2D point",
+              "properties": {
+                "x": {
+                  "type": "number",
+                  "description": "X coordinate"
+                },
+                "y": {
+                  "type": "number",
+                  "description": "Y coordinate"
+                }
+              },
+              "required": [
+                "x",
+                "y"
+              ]
+            },
+            "description": "Vertex points, e.g. [{\"x\":0,\"y\":0},{\"x\":4,\"y\":0},{\"x\":2,\"y\":3}]"
+          },
+          "center": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "description": "Center coordinate component [x, y]"
+            },
+            "description": "Center coordinates for circle, e.g. [0, 0]"
+          },
+          "radius": {
+            "type": "number",
+            "description": "Radius length for circle"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "Vertex label letter"
+            },
+            "description": "Vertex labels, automatically converted to Greek letters if use_greek is true"
+          },
+          "features": {
+            "type": "array",
+            "maxItems": 20,
+            "items": {
+              "type": "string",
+              "description": "Geometric construction feature",
+              "enum": [
+                "altitude_from_a",
+                "altitude_from_b",
+                "altitude_from_c",
+                "all_altitudes",
+                "median_from_a",
+                "median_from_b",
+                "median_from_c",
+                "all_medians",
+                "bisector_from_a",
+                "bisector_from_b",
+                "bisector_from_c",
+                "all_bisectors",
+                "angle_bisector_from_a",
+                "angle_bisector_from_b",
+                "angle_bisector_from_c",
+                "circumscribed_circle",
+                "inscribed_circle",
+                "right_angle",
+                "right_angles",
+                "diagonals",
+                "radius_line",
+                "diameter",
+                "tangent",
+                "tangent_at_a",
+                "chord",
+                "chord_ab",
+                "central_angle",
+                "inscribed_angle",
+                "sector"
+              ]
+            },
+            "description": "Optional constructions. Triangle features need triangle vertices. Circle chord, central_angle, and sector need at least 2 point_angles; inscribed_angle needs 3."
+          },
+          "point_angles": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "type": "number",
+              "description": "Angle in degrees on circle perimeter"
+            },
+            "description": "Circle-point positions in degrees. The first point is used for radius/tangent; later points define chords and angles."
+          },
+          "point_labels": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 8,
+            "items": {
+              "type": "string",
+              "description": "Label for circle point"
+            },
+            "description": "Labels corresponding one-to-one with point_angles. Latin A/B/C can be converted to Greek."
+          },
+          "vertex": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number",
+              "description": "Angle vertex coordinate [x, y]"
+            },
+            "description": "Angle vertex."
+          },
+          "ray1_end": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number",
+              "description": "First ray endpoint coordinate [x, y]"
+            },
+            "description": "Point defining the first angle ray."
+          },
+          "ray2_end": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": {
+              "type": "number",
+              "description": "Second ray endpoint coordinate [x, y]"
+            },
+            "description": "Point defining the second angle ray."
+          },
+          "angle_label": {
+            "type": "string",
+            "description": "Label shown inside an angle."
+          },
+          "show_bisector": {
+            "type": "boolean",
+            "default": false,
+            "description": "Draw the angle bisector."
+          },
+          "transversal_angle": {
+            "type": "number",
+            "minimum": 5,
+            "maximum": 175,
+            "description": "Angle in degrees for the transversal across parallel lines; 90 is not accepted."
+          },
+          "shape_type": {
+            "type": "string",
+            "enum": [
+              "cylinder",
+              "cone",
+              "pyramid",
+              "square_pyramid",
+              "prism",
+              "cube",
+              "sphere"
+            ],
+            "description": "Required only when shape is 3d_shape. Prefer setting shape directly to the solid type."
+          },
+          "dimensions": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "number",
+              "description": "Dimension value"
+            },
+            "description": "Positive solid dimensions: cylinder/cone use radius,height; pyramid uses base_width,base_depth,height; prism uses width,depth,height; cube uses side; sphere uses radius."
+          },
+          "title": {
+            "type": "string",
+            "description": "Figure title (supports Greek text)"
+          },
+          "use_greek": {
+            "type": "boolean",
+            "default": true,
+            "description": "Whether to label vertices using the Greek alphabet"
+          },
+          "show_grid": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show subtle background grid"
+          },
+          "show_axis": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show coordinate axes"
+          }
+        }
+      },
+      "PlotRequest": {
+        "type": "object",
+        "required": [
+          "formulas"
+        ],
+        "properties": {
+          "formulas": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 4,
+            "items": {
+              "type": "string",
+              "description": "Mathematical formula expression"
+            },
+            "description": "Array of mathematical expressions, e.g. ['y=x^2-3*x+2', 'y=sin(x)']"
+          },
+          "x_range": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "description": "Domain boundary coordinate"
+            },
+            "description": "Domain range [x_min, x_max], e.g. [-5, 5]"
+          },
+          "y_range": {
+            "type": "array",
+            "items": {
+              "type": "number",
+              "description": "Codomain boundary coordinate"
+            },
+            "description": "Optional codomain range [y_min, y_max]"
+          },
+          "show_features": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "Mathematical point feature type",
+              "enum": [
+                "roots",
+                "extrema",
+                "asymptotes",
+                "intercepts",
+                "all"
+              ]
+            },
+            "description": "Mathematical points to highlight: roots, extrema, asymptotes, intercepts, all"
+          },
+          "shade": {
+            "type": "object",
+            "properties": {
+              "x_start": {
+                "type": "number",
+                "description": "Interval start x coordinate"
+              },
+              "x_end": {
+                "type": "number",
+                "description": "Interval end x coordinate"
+              },
+              "formula_indices": {
+                "type": "array",
+                "minItems": 2,
+                "maxItems": 2,
+                "items": {
+                  "type": "integer",
+                  "description": "Index of formula"
+                },
+                "description": "Two zero-based formula indices for shading between curves."
+              }
+            },
+            "description": "Shade an interval under the first curve, or between two curves when formula_indices is provided."
+          },
+          "title": {
+            "type": "string",
+            "description": "Plot title"
+          },
+          "labels": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "description": "Custom legend label for formula"
+            },
+            "description": "Custom legend labels for each formula"
+          },
+          "show_grid": {
+            "type": "boolean",
+            "default": true,
+            "description": "Show grid"
+          }
+        }
+      },
+      "ImageResponse": {
+        "type": "object",
+        "required": [
+          "success",
+          "image_url",
+          "message"
+        ],
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Whether the operation succeeded"
+          },
+          "image_url": {
+            "type": "string",
+            "description": "Direct public URL of the generated diagram image"
+          },
+          "viewer_url": {
+            "type": "string",
+            "format": "uri",
+            "description": "Interactive rotatable viewer URL returned for solid geometry requests."
+          },
+          "interactive": {
+            "type": "boolean",
+            "description": "True when viewer_url is available."
+          },
+          "shape": {
+            "type": "string",
+            "description": "Type of geometric shape generated"
+          },
+          "message": {
+            "type": "string",
+            "description": "Status or error message"
+          }
+        }
+      }
+    }
+  }
+}
