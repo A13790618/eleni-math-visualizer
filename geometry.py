@@ -849,18 +849,27 @@ def draw_3d_shape(shape_type='cylinder', title=None, dimensions=None):
         ax.plot([A1[0], D1[0]], [A1[1], D1[1]], '--', color=gray, lw=1.8)
         
         # Labels
-        _label_point(ax, A, 'A', offset=(-15, -15), use_greek=True)
-        _label_point(ax, B, 'B', offset=(10, -15), use_greek=True)
-        _label_point(ax, C, 'C', offset=(10, 5), use_greek=True)
-        _label_point(ax, D, 'D', offset=(-15, 10), use_greek=True)
-        _label_point(ax, C1, 'C\'', offset=(10, 5), use_greek=True)
+        # Textbook / 3D-viewer convention: bottom base ΑΒΓΔ, top base Α′Β′Γ′Δ′.
+        # In this oblique drawing the bottom base is A, B, B1, A1 and the top
+        # base is D, C, C1, D1.
+        _label_point(ax, A, 'Α', offset=(-15, -15), use_greek=False)
+        _label_point(ax, B, 'Β', offset=(10, -15), use_greek=False)
+        _label_point(ax, B1, 'Γ', offset=(10, -4), use_greek=False)
+        _label_point(ax, A1, 'Δ', offset=(-18, 6), use_greek=False)
+        _label_point(ax, D, 'Α′', offset=(-20, 8), use_greek=False)
+        _label_point(ax, C, 'Β′', offset=(10, 5), use_greek=False)
+        _label_point(ax, C1, 'Γ′', offset=(10, 5), use_greek=False)
+        _label_point(ax, D1, 'Δ′', offset=(-20, 8), use_greek=False)
         ax.text((A[0] + B[0])/2, A[1] - 0.35, f'α = {number(width_value)}', fontsize=11,
                 fontweight='bold', color=green, ha='center')
-        ax.text(B[0] + 0.15, (B[1] + C[1])/2, f'γ = {number(height_value)}', fontsize=11,
+        # A cube has a single edge length α; only the cuboid distinguishes γ (height).
+        height_symbol = 'α' if st == 'cube' else 'γ'
+        ax.text(B[0] + 0.15, (B[1] + C[1])/2, f'{height_symbol} = {number(height_value)}', fontsize=11,
                 fontweight='bold', color=orange)
         if st == 'prism':
-            ax.text(C[0] + dx/2, C[1] + dy/2 + 0.15, f'β = {number(depth_value)}',
-                    fontsize=11, fontweight='bold', color=green, ha='center')
+            # β on the bottom depth edge ΒΓ (B → B1), like the 3D viewer
+            ax.text(B[0] + dx/2 + 0.2, B[1] + dy/2 - 0.3, f'β = {number(depth_value)}',
+                    fontsize=11, fontweight='bold', color=green, ha='left')
         
     elif st == 'sphere':
         if not title:
