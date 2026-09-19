@@ -422,7 +422,10 @@ def draw_circle(center, radius, labels=None, features=None, point_angles=None,
                    linewidth=1.5, zorder=3)
             ax.plot([t1[0], t2[0]], [t1[1], t2[1]], '-', color=COLORS['auxiliary'],
                    linewidth=2, zorder=3)
-            _label_point(ax, tangent_point, circle_label(0, 'A'), offset=(10, 10), use_greek=use_greek)
+            tangent_label = circle_label(0, 'A')
+            if tangent_label == labels.get('center', 'O'):
+                tangent_label = 'A'  # never reuse the centre's name for a point on the circle
+            _label_point(ax, tangent_point, tangent_label, offset=(10, 10), use_greek=use_greek)
             _add_right_angle_mark(ax, tangent_point, O, t2, size=r*0.12)
 
         if feat_lower in ['chord', 'chord_ab']:
