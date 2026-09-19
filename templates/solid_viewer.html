@@ -39,7 +39,10 @@
       background-size: 48px 48px;
       mask-image: linear-gradient(to bottom, black, transparent 80%);
     }
-    #stage { position: absolute; inset: 0; touch-action: none; cursor: grab; outline: none; }
+    /* width/height 100% is required: a canvas is a replaced element, so `inset: 0`
+       alone leaves it at its drawing-buffer size (2× on hi-DPI phones) and the model
+       renders off-centre. */
+    #stage { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; outline: none; }
     #stage:active { cursor: grabbing; }
     #stage:focus-visible { box-shadow: inset 0 0 0 3px var(--focus); }
     .topbar {
@@ -143,7 +146,7 @@
       .identity { max-width: calc(100vw - 142px); padding: 11px 13px; border-radius: 14px; }
       .eyebrow { font-size: 10px; }
       h1 { font-size: 17px; }
-      .actions { padding: 5px; }
+      .actions { padding: 5px; flex-wrap: wrap; justify-content: flex-end; max-width: calc(100vw - 20px); }
       .control { min-width: 44px; min-height: 44px; padding: 0 10px; }
       .control span { display: none; }
       .bottom { left: 10px; right: 10px; bottom: max(10px, env(safe-area-inset-bottom)); display: block; }
@@ -155,6 +158,27 @@
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
     }
+    .notice {
+      position: absolute;
+      top: calc(max(18px, env(safe-area-inset-top)) + 92px);
+      left: 18px;
+      max-width: min(520px, calc(100vw - 36px));
+      padding: 10px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 209, 102, .45);
+      background: rgba(60, 40, 5, .82);
+      color: var(--gold);
+      font-size: 13px;
+      line-height: 1.45;
+      display: none;
+      pointer-events: none;
+    }
+    .notice.is-visible { display: block; }
+    .control[aria-pressed="true"].scale-toggle { background: rgba(255, 209, 102, .14); border-color: rgba(255, 209, 102, .4); }
+    .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0 0; padding: 0; list-style: none; color: var(--muted); font-size: 12px; }
+    .legend li { display: inline-flex; align-items: center; gap: 6px; }
+    .legend i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; }
+    .legend i.dashed { background: repeating-linear-gradient(90deg, currentColor 0 4px, transparent 4px 7px); height: 3px; }
   </style>
   <script type="importmap">
     {"imports":{"three":"{{ url_for('static', filename='vendor/three/three.module.min.js') }}"}}
@@ -174,6 +198,14 @@
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66"/><path d="M20 4v7h-7"/></svg>
           <span>Παύση</span>
         </button>
+        <button class="control scale-toggle" id="scale-button" type="button" aria-pressed="true" aria-label="Εναλλαγή κλίμακας">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 17h18M6 14v3M10 12v5M14 14v3M18 12v5"/></svg>
+          <span>Κλίμακα 1:1</span>
+        </button>
+        <button class="control" id="labels-button" type="button" aria-pressed="true" aria-label="Εμφάνιση/απόκρυψη διαστάσεων">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16M4 12h10M4 17h7"/></svg>
+          <span>Διαστάσεις</span>
+        </button>
         <button class="control" id="reset-button" type="button" aria-label="Επαναφορά προβολής">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
           <span>Επαναφορά</span>
@@ -184,11 +216,14 @@
       </nav>
     </header>
 
+    <p class="notice" id="notice" role="status"></p>
+
     <footer class="bottom">
       <section class="dimensions" aria-label="Διαστάσεις">
         <ul class="dimension-list" id="dimension-list"></ul>
+        <ul class="legend" id="legend"></ul>
       </section>
-      <p class="hint">Σύρετε για περιστροφή · Χρησιμοποιήστε δύο δάχτυλα ή τον τροχό για μεγέθυνση</p>
+      <p class="hint">Σύρετε για περιστροφή · Χρησιμοποιήστε δύο δάχτυλα ή τον τροχό για μεγέθυνση · Κάθε τετράγωνο του πλέγματος = 1 μονάδα</p>
     </footer>
 
     <div class="loading" id="loading" role="status" aria-live="polite">
@@ -205,17 +240,37 @@
     import * as THREE from 'three';
     import { OrbitControls } from '{{ url_for('static', filename='vendor/three/OrbitControls.js') }}';
 
+    // ---------------------------------------------------------------------
+    // Configuration & notation
+    // The symbols below mirror geometry.draw_3d_shape() exactly, so the 2D
+    // preview card and the interactive model read the same way as the
+    // textbook (Κεφάλαιο 13 – Στερεά σχήματα): ρ radius, υ height, λ
+    // generatrix, α/β/γ edges, Ο/Ο′ base centres, Κ apex, ΑΒΓΔ base vertices.
+    // ---------------------------------------------------------------------
     const config = JSON.parse(document.getElementById('model-data').textContent);
     const canvas = document.getElementById('stage');
     const loading = document.getElementById('loading');
     const errorPanel = document.getElementById('error');
+    const notice = document.getElementById('notice');
     const dimensionsList = document.getElementById('dimension-list');
+    const legendList = document.getElementById('legend');
     const rotateButton = document.getElementById('rotate-button');
+    const scaleButton = document.getElementById('scale-button');
+    const labelsButton = document.getElementById('labels-button');
     const resetButton = document.getElementById('reset-button');
     const fullscreenButton = document.getElementById('fullscreen-button');
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
-    const defaults = {
+    const REQUIRED = {
+      cylinder: ['radius', 'height'],
+      cone: ['radius', 'height'],
+      pyramid: ['base_width', 'base_depth', 'height'],
+      square_pyramid: ['base_width', 'base_depth', 'height'],
+      prism: ['width', 'depth', 'height'],
+      cube: ['side'],
+      sphere: ['radius']
+    };
+    const DEFAULTS = {
       cylinder: { radius: 2, height: 5 },
       cone: { radius: 2, height: 5 },
       pyramid: { base_width: 4, base_depth: 4, height: 5 },
@@ -224,29 +279,74 @@
       cube: { side: 3 },
       sphere: { radius: 2.5 }
     };
-    const shape = config.shape === 'pyramid' ? 'pyramid' : config.shape;
-    const values = { ...(defaults[shape] || defaults.cube), ...(config.dimensions || {}) };
-    const shapeNames = {
+    const shape = REQUIRED[config.shape] ? config.shape : 'cube';
+    const given = config.dimensions || {};
+    const missing = REQUIRED[shape].filter(key => !(key in given) || !Number.isFinite(Number(given[key])) || Number(given[key]) <= 0);
+    const values = { ...DEFAULTS[shape] };
+    for (const key of REQUIRED[shape]) if (!missing.includes(key)) values[key] = Number(given[key]);
+
+    const SHAPE_NAMES = {
       cylinder: 'Κύλινδρος', cone: 'Κώνος', sphere: 'Σφαίρα',
       cube: 'Κύβος', prism: 'Ορθογώνιο παραλληλεπίπεδο',
       pyramid: 'Πυραμίδα', square_pyramid: 'Τετραγωνική πυραμίδα'
     };
-    if (!config.title) document.getElementById('model-title').textContent = shapeNames[shape] || 'Στερεό γεωμετρικό σχήμα';
+    if (!config.title) document.getElementById('model-title').textContent = SHAPE_NAMES[shape];
 
-    const dimensionNames = {
-      radius: 'Ακτίνα r', height: 'Ύψος h', side: 'Πλευρά a',
-      width: 'Μήκος a', depth: 'Πλάτος b',
-      base_width: 'Βάση a', base_depth: 'Βάση b'
+    // Per-shape symbol table (matches geometry.py: υ for cylinder/cone/pyramid
+    // height, γ for prism height, α side/width, β depth, ρ radius, λ generatrix).
+    const SYMBOLS = {
+      cylinder: { radius: ['ρ', 'Ακτίνα βάσης'], height: ['υ', 'Ύψος'] },
+      cone: { radius: ['ρ', 'Ακτίνα βάσης'], height: ['υ', 'Ύψος'] },
+      pyramid: { base_width: ['α', 'Βάση'], base_depth: ['β', 'Βάση'], height: ['υ', 'Ύψος'] },
+      square_pyramid: { base_width: ['α', 'Βάση'], base_depth: ['β', 'Βάση'], height: ['υ', 'Ύψος'] },
+      prism: { width: ['α', 'Μήκος'], depth: ['β', 'Πλάτος'], height: ['γ', 'Ύψος'] },
+      cube: { side: ['α', 'Ακμή'] },
+      sphere: { radius: ['ρ', 'Ακτίνα'] }
     };
-    for (const [key, value] of Object.entries(values)) {
+    const COLORS = {
+      radius: 0x3ddc84,   // green  – ρ  (matches 2D auxiliary2)
+      height: 0xff8c42,   // orange – υ / γ (matches 2D auxiliary)
+      edge: 0x5ce1e6,     // cyan   – α / β edges
+      generatrix: 0x8ec5ff, // blue – λ
+      point: 0xffd166,    // gold   – named points
+      pointText: '#ffd166'
+    };
+    const hex = n => '#' + n.toString(16).padStart(6, '0');
+    const fmt = v => Number(v).toLocaleString('el-GR', { maximumFractionDigits: 2 });
+
+    // Derived quantities shown in the panel (computed, never guessed).
+    const derived = [];
+    if (shape === 'cone') derived.push(['λ', 'Γενέτειρα', Math.hypot(values.radius, values.height), COLORS.generatrix]);
+    if (shape === 'sphere') derived.push(['δ', 'Διάμετρος', 2 * values.radius, COLORS.radius]);
+    if (shape === 'cube') derived.push(['δ', 'Διαγώνιος', values.side * Math.sqrt(3), COLORS.generatrix]);
+
+    for (const key of REQUIRED[shape]) {
+      const [sym, name] = SYMBOLS[shape][key];
       const item = document.createElement('li');
       const label = document.createElement('span');
       const number = document.createElement('strong');
-      label.textContent = dimensionNames[key] || key;
-      number.textContent = Number(value).toLocaleString('el-GR');
+      label.textContent = `${name} ${sym}`;
+      number.textContent = fmt(values[key]) + (missing.includes(key) ? ' (προεπιλογή)' : '');
       item.append(label, number);
       dimensionsList.append(item);
     }
+    for (const [sym, name, val, color] of derived) {
+      const item = document.createElement('li');
+      const label = document.createElement('span');
+      const number = document.createElement('strong');
+      label.textContent = `${name} ${sym} =`;
+      label.style.color = hex(color);
+      number.textContent = fmt(val);
+      item.append(label, number);
+      dimensionsList.append(item);
+    }
+    if (missing.length) {
+      notice.textContent = 'Δεν δόθηκαν όλες οι διαστάσεις (' + missing.join(', ') + '). Το μοντέλο εμφανίζεται με προεπιλεγμένες τιμές.';
+      notice.classList.add('is-visible');
+    }
+
+    const debug = { shape, values, missing, annotations: [], points: [], mode: 'true-scale' };
+    window.__ELENI_VIEWER_DEBUG__ = debug;
 
     try {
       const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
@@ -259,7 +359,6 @@
       renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
       const scene = new THREE.Scene();
-      scene.fog = new THREE.FogExp2(0x071526, 0.025);
       const camera = new THREE.PerspectiveCamera(38, window.innerWidth / window.innerHeight, 0.01, 20000);
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
@@ -277,91 +376,308 @@
       rimLight.position.set(-6, 3, -5);
       scene.add(rimLight);
 
+      // ------------------------------------------------------------------
+      // Solid geometry. Every solid is built centred on the origin with its
+      // height along +Y, so the annotation anchors below are exact.
+      // ------------------------------------------------------------------
       let geometry;
+      const V = (x, y, z) => new THREE.Vector3(x, y, z);
       if (shape === 'cylinder') {
-        geometry = new THREE.CylinderGeometry(values.radius, values.radius, values.height, 64, 2, false);
+        geometry = new THREE.CylinderGeometry(values.radius, values.radius, values.height, 96, 1, false);
       } else if (shape === 'cone') {
-        geometry = new THREE.ConeGeometry(values.radius, values.height, 64, 3, false);
+        geometry = new THREE.ConeGeometry(values.radius, values.height, 96, 1, false);
       } else if (shape === 'sphere') {
-        geometry = new THREE.SphereGeometry(values.radius, 64, 40);
+        geometry = new THREE.SphereGeometry(values.radius, 96, 64);
       } else if (shape === 'cube') {
-        geometry = new THREE.BoxGeometry(values.side, values.side, values.side, 2, 2, 2);
+        geometry = new THREE.BoxGeometry(values.side, values.side, values.side);
       } else if (shape === 'prism') {
-        geometry = new THREE.BoxGeometry(values.width, values.height, values.depth, 2, 2, 2);
-      } else if (shape === 'pyramid' || shape === 'square_pyramid') {
-        const w = values.base_width;
-        const d = values.base_depth;
-        const h = values.height;
+        geometry = new THREE.BoxGeometry(values.width, values.height, values.depth);
+      } else {
+        const w = values.base_width, d = values.base_depth, h = values.height;
         const points = new Float32Array([
-          -w/2, -h/2, -d/2,  w/2, -h/2, -d/2,
-           w/2, -h/2,  d/2, -w/2, -h/2,  d/2,
+          -w/2, -h/2, -d/2,   w/2, -h/2, -d/2,
+           w/2, -h/2,  d/2,  -w/2, -h/2,  d/2,
            0,    h/2,   0
         ]);
-        const indices = [0,2,1, 0,3,2, 0,1,4, 1,2,4, 2,3,4, 3,0,4];
         geometry = new THREE.BufferGeometry();
         geometry.setAttribute('position', new THREE.BufferAttribute(points, 3));
-        geometry.setIndex(indices);
+        geometry.setIndex([0,2,1, 0,3,2, 0,1,4, 1,2,4, 2,3,4, 3,0,4]);
         geometry.computeVertexNormals();
-      } else {
-        throw new Error('Unsupported solid');
       }
-
       geometry.computeBoundingBox();
-      geometry.center();
       geometry.computeBoundingSphere();
-      const radius = Math.max(geometry.boundingSphere.radius, .1);
+      const objectRadius = Math.max(geometry.boundingSphere.radius, .1);
+      const bottomY = geometry.boundingBox.min.y;
+
+      // ------------------------------------------------------------------
+      // Scale policy.  "Κλίμακα 1:1": the camera distance is derived from a
+      // fixed reference size, so a radius-1 cylinder really looks half as
+      // big as a radius-2 one.  Solids larger than the reference are fitted.
+      // "Προσαρμογή": classic fit-to-screen (every solid fills the view).
+      // ------------------------------------------------------------------
+      const REFERENCE_RADIUS = 6;
+      let trueScale = true;
+      const frameRadius = () => trueScale ? Math.max(objectRadius, REFERENCE_RADIUS) : objectRadius;
+      const u = frameRadius(); // screen-consistent unit for label offsets & tick sizes
 
       const group = new THREE.Group();
       const material = new THREE.MeshPhysicalMaterial({
-        color: 0x278ee8,
-        emissive: 0x061b33,
-        metalness: .08,
-        roughness: .22,
-        clearcoat: 1,
-        clearcoatRoughness: .16,
-        transparent: true,
-        opacity: .9,
-        side: THREE.DoubleSide
+        color: 0x278ee8, emissive: 0x061b33, metalness: .08, roughness: .22,
+        clearcoat: 1, clearcoatRoughness: .16, transparent: true, opacity: .82, side: THREE.DoubleSide
       });
       const mesh = new THREE.Mesh(geometry, material);
       mesh.castShadow = true;
       mesh.receiveShadow = true;
       group.add(mesh);
-
-      const edges = new THREE.LineSegments(
+      group.add(new THREE.LineSegments(
         new THREE.EdgesGeometry(geometry, 22),
         new THREE.LineBasicMaterial({ color: 0xa8e8ff, transparent: true, opacity: .9 })
-      );
-      group.add(edges);
+      ));
       scene.add(group);
 
-      const floorY = geometry.boundingBox.min.y - radius * .16;
-      const floor = new THREE.Mesh(
-        new THREE.CircleGeometry(radius * 2.1, 72),
-        new THREE.ShadowMaterial({ color: 0x000000, opacity: .3 })
-      );
-      floor.rotation.x = -Math.PI / 2;
-      floor.position.y = floorY;
-      floor.receiveShadow = true;
+      // ------------------------------------------------------------------
+      // Annotation toolkit: rods (thin cylinders, crisp at any DPI), dashed
+      // rods for hidden/auxiliary lines, point markers and camera-facing
+      // text sprites.  All annotations ignore depth so they stay readable
+      // through the translucent solid, exactly like textbook drawings.
+      // ------------------------------------------------------------------
+      const annotations = new THREE.Group();
+      annotations.renderOrder = 10;
+      group.add(annotations);
+      const sprites = [];
+      let annotationUnit = 1; // recomputed from frameRadius()
+
+      function rod(a, b, color, thickness = 1) {
+        const dir = b.clone().sub(a);
+        const len = dir.length();
+        const geo = new THREE.CylinderGeometry(1, 1, 1, 12, 1);
+        const mat = new THREE.MeshBasicMaterial({ color, depthTest: false, transparent: true, opacity: .98 });
+        const m = new THREE.Mesh(geo, mat);
+        m.position.copy(a).add(dir.clone().multiplyScalar(.5));
+        m.quaternion.setFromUnitVectors(V(0, 1, 0), dir.clone().normalize());
+        m.userData.rod = { len, thickness };
+        m.renderOrder = 11;
+        annotations.add(m);
+        return m;
+      }
+      function dashed(a, b, color) {
+        const dir = b.clone().sub(a);
+        const len = dir.length();
+        const n = Math.max(6, Math.round(len / (u * .05)));
+        const step = len / (2 * n - 1);
+        const dirU = dir.clone().normalize();
+        for (let i = 0; i < n; i++) {
+          const s = a.clone().add(dirU.clone().multiplyScalar(step * 2 * i));
+          const e = s.clone().add(dirU.clone().multiplyScalar(step));
+          rod(s, e, color, 1);
+        }
+      }
+      function marker(p, color = COLORS.point) {
+        const m = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 12),
+          new THREE.MeshBasicMaterial({ color, depthTest: false }));
+        m.position.copy(p);
+        m.userData.marker = true;
+        m.renderOrder = 12;
+        annotations.add(m);
+        return m;
+      }
+      function tick(p, dir, color) {
+        // small perpendicular end-tick for dimension lines
+        const t = dir.clone().normalize();
+        const perp = Math.abs(t.y) > .9 ? V(1, 0, 0) : V(0, 1, 0).cross(t).normalize();
+        const half = u * .025;
+        rod(p.clone().add(perp.clone().multiplyScalar(-half)), p.clone().add(perp.clone().multiplyScalar(half)), color, .8);
+      }
+      function label(text, p, color, { size = 1, offset = V(0, 0, 0) } = {}) {
+        const c = document.createElement('canvas');
+        const ctx = c.getContext('2d');
+        const font = '700 64px "Segoe UI", Inter, Arial, sans-serif';
+        ctx.font = font;
+        const w = Math.ceil(ctx.measureText(text).width) + 48;
+        c.width = w; c.height = 96;
+        ctx.font = font;
+        ctx.fillStyle = 'rgba(4, 14, 28, .78)';
+        ctx.beginPath(); ctx.roundRect(0, 0, w, 96, 22); ctx.fill();
+        ctx.strokeStyle = color; ctx.lineWidth = 4; ctx.stroke();
+        ctx.fillStyle = color; ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+        ctx.fillText(text, w / 2, 50);
+        const tex = new THREE.CanvasTexture(c);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true }));
+        sp.position.copy(p).add(offset);
+        sp.userData.label = { aspect: w / 96, size };
+        sp.renderOrder = 13;
+        annotations.add(sp);
+        sprites.push(sp);
+        debug.annotations.push({ text, position: [+p.x.toFixed(3), +p.y.toFixed(3), +p.z.toFixed(3)] });
+        return sp;
+      }
+      function dimension(a, b, text, color, side) {
+        // dimension line with end ticks + label pushed to `side`
+        rod(a, b, color, 1);
+        tick(a, b.clone().sub(a), color); tick(b, b.clone().sub(a), color);
+        const mid = a.clone().add(b).multiplyScalar(.5);
+        label(text, mid, hex(color), { offset: side });
+      }
+      function point(name, p, offset) {
+        marker(p);
+        debug.points.push({ name, position: [+p.x.toFixed(3), +p.y.toFixed(3), +p.z.toFixed(3)] });
+        if (!offset) {
+          // push the name away from the solid: outward in XZ, up for top/mid points, down for base points
+          const radial = V(p.x, 0, p.z); const k = radial.length() > 1e-6 ? u * .05 : 0;
+          offset = radial.normalize().multiplyScalar(k).add(V(0, (p.y < -1e-6 ? -1 : 1) * u * .05, 0));
+        }
+        label(name, p, COLORS.pointText, { size: .85, offset });
+      }
+      const out = (x, z, k) => V(x, 0, z).normalize().multiplyScalar(objectRadius * k); // outward offset in XZ
+
+      // ------------------------------------------------------------------
+      // Per-solid annotations (symbols identical to the 2D preview)
+      // ------------------------------------------------------------------
+      const r = values.radius, hh = values.height / 2;
+      if (shape === 'cylinder') {
+        const O = V(0, hh, 0), O2 = V(0, -hh, 0), A = V(r, hh, 0);
+        dashed(O, O2, COLORS.height);                         // axis ΟΟ′ = ύψος
+        label(`υ = ${fmt(values.height)}`, V(0, 0, 0), hex(COLORS.height), { offset: V(-Math.max(r * .55, u * .08), 0, Math.max(r * .55, u * .08)) });
+        dimension(O, A, `ρ = ${fmt(values.radius)}`, COLORS.radius, V(u * .05, u * .075, 0));
+        point('Ο', O, V(-u * .05, u * .045, 0)); point('Ο′', O2, V(-u * .05, -u * .05, 0)); marker(A);
+        // hidden half of the bottom rim, dashed (textbook convention)
+        const back = new THREE.EllipseCurve(0, 0, r, r, Math.PI, 2 * Math.PI).getPoints(24)
+          .map(q => V(q.x, -hh, q.y));
+        for (let i = 0; i < back.length - 1; i += 2) rod(back[i], back[i + 1], 0xa8e8ff, .7);
+      } else if (shape === 'cone') {
+        const K = V(0, hh, 0), O = V(0, -hh, 0), A = V(r, -hh, 0);
+        const lam = Math.hypot(values.radius, values.height);
+        dashed(K, O, COLORS.height);
+        label(`υ = ${fmt(values.height)}`, V(0, 0, 0), hex(COLORS.height), { offset: V(-Math.max(r * .6, u * .08), 0, Math.max(r * .6, u * .08)) });
+        dimension(O, A, `ρ = ${fmt(values.radius)}`, COLORS.radius, V(u * .03, -u * .075, u * .02));
+        rod(K, A, COLORS.generatrix, 1);
+        label(`λ = ${fmt(lam)}`, K.clone().add(A).multiplyScalar(.5), hex(COLORS.generatrix), { offset: V(u * .11, 0, 0) });
+        // right angle mark at Ο between υ and ρ
+        const s = Math.min(r, values.height) * .18;
+        rod(V(0, -hh + s, 0), V(s, -hh + s, 0), 0xffffff, .6); rod(V(s, -hh + s, 0), V(s, -hh, 0), 0xffffff, .6);
+        point('Κ', K); point('Ο', O, V(-u * .05, -u * .035, u * .03)); point('Α', A, V(u * .05, -u * .045, 0));
+      } else if (shape === 'sphere') {
+        const O = V(0, 0, 0), A = V(r, 0, 0);
+        dimension(O, A, `ρ = ${fmt(values.radius)}`, COLORS.radius, V(0, u * .075, 0));
+        // great circle (equator) – dashed on the far half
+        const eq = new THREE.EllipseCurve(0, 0, r, r, 0, 2 * Math.PI).getPoints(72).map(q => V(q.x, 0, q.y));
+        for (let i = 0; i < eq.length - 1; i++) if (eq[i].z >= 0 || i % 2 === 0) rod(eq[i], eq[i + 1], 0xa8e8ff, .7);
+        point('Ο', O, V(-u * .05, -u * .05, 0)); point('Α', A, V(u * .05, -u * .045, 0));
+      } else if (shape === 'cube' || shape === 'prism') {
+        const w = shape === 'cube' ? values.side : values.width;
+        const d = shape === 'cube' ? values.side : values.depth;
+        const h = shape === 'cube' ? values.side : values.height;
+        const A = V(-w/2, -h/2, d/2), B = V(w/2, -h/2, d/2), G = V(w/2, -h/2, -d/2), D = V(-w/2, -h/2, -d/2);
+        const A1 = V(-w/2, h/2, d/2), B1 = V(w/2, h/2, d/2), G1 = V(w/2, h/2, -d/2), D1 = V(-w/2, h/2, -d/2);
+        // hidden edges through D (back-left-bottom), dashed
+        dashed(D, A, 0xa8e8ff); dashed(D, G, 0xa8e8ff); dashed(D, D1, 0xa8e8ff);
+        const sa = SYMBOLS[shape][shape === 'cube' ? 'side' : 'width'][0];
+        dimension(A, B, `${sa} = ${fmt(w)}`, COLORS.edge, V(0, -u * .09, u * .05));
+        if (shape === 'prism') {
+          dimension(B, G, `β = ${fmt(d)}`, COLORS.edge, V(u * .12, -u * .07, 0));
+          dimension(B, B1, `γ = ${fmt(h)}`, COLORS.height, V(u * .13, u * .06, u * .06));
+        } else {
+          dimension(B, B1, `α = ${fmt(h)}`, COLORS.edge, V(u * .13, u * .06, u * .06));
+        }
+        const pts = [['Α', A], ['Β', B], ['Γ', G], ['Δ', D], ['Α′', A1], ['Β′', B1], ['Γ′', G1], ['Δ′', D1]];
+        for (const [n, p] of pts) point(n, p);
+      } else {
+        const w = values.base_width, d = values.base_depth, h = values.height;
+        const A = V(-w/2, -h/2, d/2), B = V(w/2, -h/2, d/2), G = V(w/2, -h/2, -d/2), D = V(-w/2, -h/2, -d/2);
+        const K = V(0, h/2, 0), O = V(0, -h/2, 0);
+        dashed(K, O, COLORS.height);
+        label(`υ = ${fmt(h)}`, V(0, 0, 0), hex(COLORS.height), { offset: V(-Math.max(w * .2, u * .08), 0, Math.max(d * .25, u * .08)) });
+        dashed(D, A, 0xa8e8ff); dashed(D, G, 0xa8e8ff); dashed(D, K, 0xa8e8ff);
+        dashed(O, B, 0xa8e8ff); // ΟΒ helps reading the foot of the height
+        dimension(A, B, `α = ${fmt(w)}`, COLORS.edge, V(0, -u * .09, u * .05));
+        dimension(B, G, `β = ${fmt(d)}`, COLORS.edge, V(u * .12, -u * .07, 0));
+        const s = Math.min(w, d, h) * .12;
+        rod(V(0, -h/2 + s, 0), V(s * .7, -h/2 + s, s * .7), 0xffffff, .6); rod(V(s * .7, -h/2 + s, s * .7), V(s * .7, -h/2, s * .7), 0xffffff, .6);
+        for (const [n, p] of [['Κ', K], ['Α', A], ['Β', B], ['Γ', G], ['Δ', D]]) point(n, p);
+        point('Ο', O, V(u * .045, -u * .04, u * .03));
+      }
+
+      // legend
+      for (const [cls, color, text] of [
+        ['', hex(COLORS.radius), 'ρ ακτίνα'], ['dashed', hex(COLORS.height), 'υ/γ ύψος'],
+        ['', hex(COLORS.edge), 'α, β ακμές'], ['', hex(COLORS.generatrix), 'λ γενέτειρα'],
+        ['dashed', '#a8e8ff', 'κρυφές ακμές']
+      ]) {
+        if (text.startsWith('λ') && shape !== 'cone') continue;
+        if (text.startsWith('υ') && shape === 'cube') continue;
+        if (text.startsWith('κρυφές') && shape === 'sphere') continue;
+        if (text.startsWith('ρ') && !['cylinder', 'cone', 'sphere'].includes(shape)) continue;
+        if (text.startsWith('α') && !['cube', 'prism', 'pyramid', 'square_pyramid'].includes(shape)) continue;
+        const li = document.createElement('li'); const i = document.createElement('i');
+        i.className = cls; i.style.background = cls ? '' : color; i.style.color = color;
+        li.append(i, document.createTextNode(text)); legendList.append(li);
+      }
+
+      // ------------------------------------------------------------------
+      // Floor, unit grid (1 unit per cell) and a 1-unit reference bar
+      // ------------------------------------------------------------------
+      const floorY = bottomY - .002;
+      const floor = new THREE.Mesh(new THREE.CircleGeometry(REFERENCE_RADIUS * 4, 72),
+        new THREE.ShadowMaterial({ color: 0x000000, opacity: .3 }));
+      floor.rotation.x = -Math.PI / 2; floor.position.y = floorY - .01; floor.receiveShadow = true;
       scene.add(floor);
+      let grid = null, ruler = null;
+      function buildGrid() {
+        if (grid) { scene.remove(grid); scene.remove(ruler); }
+        const size = 2 * Math.ceil(frameRadius() * 1.5);   // integer size → 1-unit cells
+        grid = new THREE.GridHelper(size, size, 0x4f95c9, 0x1f4d72);
+        grid.position.y = floorY;
+        grid.material.transparent = true; grid.material.opacity = .32;
+        scene.add(grid);
+        ruler = new THREE.Group();
+        // 1-unit reference bar just in front of the solid, on the grid
+        const zr = Math.ceil(geometry.boundingBox.max.z) + 1;
+        const xr = -(Math.ceil(geometry.boundingBox.max.x) + 1.5);
+        const t = frameRadius() * .006;
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(1, t, t * 1.6), new THREE.MeshBasicMaterial({ color: 0xffd166 }));
+        bar.position.set(xr, floorY + t, zr);
+        ruler.add(bar);
+        for (const x of [-.5, .5]) { const e = new THREE.Mesh(new THREE.BoxGeometry(t, t * 5, t * 1.6), new THREE.MeshBasicMaterial({ color: 0xffd166 })); e.position.set(xr + x, floorY + t * 2.5, zr); ruler.add(e); }
+        const c = document.createElement('canvas'); const cx = c.getContext('2d');
+        cx.font = '700 56px "Segoe UI", Inter, Arial, sans-serif'; const tw = Math.ceil(cx.measureText('1 μονάδα').width) + 40; c.width = tw; c.height = 80;
+        cx.font = '700 56px "Segoe UI", Inter, Arial, sans-serif'; cx.fillStyle = '#ffd166'; cx.textAlign = 'center'; cx.textBaseline = 'middle'; cx.fillText('1 μονάδα', tw / 2, 42);
+        const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false }));
+        const hgt = frameRadius() * .075; sp.scale.set(hgt * tw / 80, hgt, 1); sp.position.set(xr, floorY + hgt * .9, zr);
+        ruler.add(sp);
+        scene.add(ruler);
+      }
 
-      const grid = new THREE.GridHelper(radius * 4.2, 14, 0x397ba8, 0x1b4260);
-      grid.position.y = floorY + .002;
-      grid.material.transparent = true;
-      grid.material.opacity = .28;
-      scene.add(grid);
-
-      const cameraDirection = new THREE.Vector3(2.3, 1.55, 2.7).normalize();
-      const preferredDistance = () => radius * (camera.aspect < .7 ? 5.35 : 3.85);
-      const initialCamera = cameraDirection.clone().multiplyScalar(preferredDistance());
-      camera.position.copy(initialCamera);
-      camera.near = Math.max(radius / 100, .01);
-      camera.far = radius * 40;
-      camera.updateProjectionMatrix();
-      controls.minDistance = radius * 1.35;
-      controls.maxDistance = radius * 8;
-      controls.target.set(0, 0, 0);
-      controls.update();
+      // ------------------------------------------------------------------
+      // Camera / sizing
+      // ------------------------------------------------------------------
+      const cameraDirection = V(2.3, 1.55, 2.7).normalize();
+      const preferredDistance = () => frameRadius() * (camera.aspect < .7 ? 6.2 : 4.5); // leaves room for the top bar and point labels
+      let initialCamera = cameraDirection.clone().multiplyScalar(preferredDistance());
+      function applyScale() {
+        annotationUnit = frameRadius();
+        for (const o of annotations.children) {
+          if (o.userData.rod) { const t = annotationUnit * .0055 * o.userData.rod.thickness; o.scale.set(t, o.userData.rod.len, t); }
+          else if (o.userData.marker) { const t = annotationUnit * .018; o.scale.set(t, t, t); }
+          else if (o.userData.label) { const h = annotationUnit * .105 * o.userData.label.size; o.scale.set(h * o.userData.label.aspect, h, 1); }
+        }
+        camera.near = Math.max(frameRadius() / 200, .01);
+        camera.far = frameRadius() * 60;
+        controls.minDistance = objectRadius * 1.2;
+        controls.maxDistance = frameRadius() * 8;
+        initialCamera = cameraDirection.clone().multiplyScalar(preferredDistance());
+        camera.position.copy(initialCamera);
+        camera.updateProjectionMatrix();
+        controls.target.set(0, 0, 0);
+        controls.update();
+        buildGrid();
+        debug.mode = trueScale ? 'true-scale' : 'fit';
+        debug.frameRadius = frameRadius();
+        debug.objectRadius = objectRadius;
+        debug.cameraDistance = camera.position.length();
+      }
+      applyScale();
       setRotationState(true);
 
       function setRotationState(enabled) {
@@ -371,6 +687,16 @@
         rotateButton.querySelector('span').textContent = controls.autoRotate ? 'Παύση' : 'Περιστροφή';
       }
       rotateButton.addEventListener('click', () => setRotationState(!controls.autoRotate));
+      scaleButton.addEventListener('click', () => {
+        trueScale = !trueScale;
+        scaleButton.setAttribute('aria-pressed', String(trueScale));
+        scaleButton.querySelector('span').textContent = trueScale ? 'Κλίμακα 1:1' : 'Προσαρμογή';
+        applyScale();
+      });
+      labelsButton.addEventListener('click', () => {
+        annotations.visible = !annotations.visible;
+        labelsButton.setAttribute('aria-pressed', String(annotations.visible));
+      });
       resetButton.addEventListener('click', () => {
         group.rotation.set(0, 0, 0);
         camera.position.copy(initialCamera);
@@ -381,9 +707,7 @@
         if (!document.fullscreenElement) await document.documentElement.requestFullscreen?.();
         else await document.exitFullscreen?.();
       });
-      reducedMotion.addEventListener('change', event => {
-        if (event.matches) setRotationState(false);
-      });
+      reducedMotion.addEventListener('change', event => { if (event.matches) setRotationState(false); });
       canvas.addEventListener('keydown', event => {
         const step = Math.PI / 36;
         if (event.key === 'ArrowLeft') group.rotation.y -= step;
@@ -396,8 +720,7 @@
       });
 
       function resize() {
-        const width = window.innerWidth;
-        const height = window.innerHeight;
+        const width = window.innerWidth, height = window.innerHeight;
         camera.aspect = width / height;
         camera.position.setLength(preferredDistance());
         camera.updateProjectionMatrix();
@@ -406,10 +729,7 @@
       }
       window.addEventListener('resize', resize, { passive: true });
 
-      renderer.setAnimationLoop(() => {
-        controls.update();
-        renderer.render(scene, camera);
-      });
+      renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
       loading.classList.add('is-hidden');
       window.__ELENI_VIEWER_READY__ = true;
     } catch (error) {
