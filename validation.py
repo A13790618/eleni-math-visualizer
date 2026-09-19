@@ -262,6 +262,10 @@ def validate_plot_request(data):
         raise ValidationError("show_grid must be a boolean")
 
     shade = data.get("shade")
+    if isinstance(shade, dict) and not any(v is not None for v in shade.values()):
+        # Coze submits every schema field; an empty/null-only shade means "no shading".
+        shade = None
+        result["shade"] = None
     if shade is not None:
         if not isinstance(shade, dict):
             raise ValidationError("shade must be an object")
