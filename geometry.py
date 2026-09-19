@@ -377,8 +377,20 @@ def draw_circle(center, radius, labels=None, features=None, point_angles=None,
         return O + np.array([r * math.cos(math.radians(fallback_angle)),
                              r * math.sin(math.radians(fallback_angle))])
 
+    centre_name = (labels or {}).get('center', 'O')
+    labelled_points = set()
+
     def circle_label(index, fallback):
-        return point_labels[index] if index < len(point_labels) else fallback
+        name = point_labels[index] if index < len(point_labels) else fallback
+        # a point on the circle must never carry the centre's name (Coze/LLM often send ["O"])
+        return fallback if name == centre_name else name
+
+    def label_circle_point(index, point, fallback, **kw):
+        # each circle point is labelled once even if several features touch it
+        if index in labelled_points:
+            return
+        labelled_points.add(index)
+        _label_point(ax, point, circle_label(index, fallback), use_greek=use_greek, **kw)
     
     fig, ax = _setup_figure(title=title, show_grid=show_grid, show_axis=show_axis)
     
@@ -400,15 +412,15 @@ def draw_circle(center, radius, labels=None, features=None, point_angles=None,
             mid = (O + end) / 2
             ax.annotate('r', xy=mid, fontsize=13, fontweight='bold',
                        color=COLORS['auxiliary'], ha='center')
-            _label_point(ax, end, circle_label(0, 'A'), offset=(10, 10), use_greek=use_greek)
+            label_circle_point(0, end, 'A', offset=(10, 10))
         
         if feat_lower == 'diameter':
             p1 = circle_point(0, 180)
             p2 = 2 * O - p1
             ax.plot([p1[0], p2[0]], [p1[1], p2[1]], '-', color=COLORS['auxiliary'],
                    linewidth=2, zorder=3)
-            _label_point(ax, p1, circle_label(0, 'A'), offset=(-15, -15), use_greek=use_greek)
-            _label_point(ax, p2, circle_label(1, 'B'), offset=(10, -15), use_greek=use_greek)
+            label_circle_point(0, p1, 'A', offset=(-15, -15))
+            label_circle_point(1, p2, 'B', offset=(10, -15))
         
         if 'tangent' in feat_lower:
             tangent_point = circle_point(0, 60)
@@ -422,18 +434,15 @@ def draw_circle(center, radius, labels=None, features=None, point_angles=None,
                    linewidth=1.5, zorder=3)
             ax.plot([t1[0], t2[0]], [t1[1], t2[1]], '-', color=COLORS['auxiliary'],
                    linewidth=2, zorder=3)
-            tangent_label = circle_label(0, 'A')
-            if tangent_label == labels.get('center', 'O'):
-                tangent_label = 'A'  # never reuse the centre's name for a point on the circle
-            _label_point(ax, tangent_point, tangent_label, offset=(10, 10), use_greek=use_greek)
+            label_circle_point(0, tangent_point, 'A', offset=(10, 10))
             _add_right_angle_mark(ax, tangent_point, O, t2, size=r*0.12)
 
         if feat_lower in ['chord', 'chord_ab']:
             p1, p2 = circle_point(0, 25), circle_point(1, 155)
             ax.plot([p1[0], p2[0]], [p1[1], p2[1]], '-',
                     color=COLORS['auxiliary3'], linewidth=2, zorder=3)
-            _label_point(ax, p1, circle_label(0, 'A'), offset=(10, 8), use_greek=use_greek)
-            _label_point(ax, p2, circle_label(1, 'B'), offset=(-16, 8), use_greek=use_greek)
+            label_circle_point(0, p1, 'A', offset=(10, 8))
+            label_circle_point(1, p2, 'B', offset=(-16, 8))
 
         if feat_lower in ['central_angle', 'sector']:
             p1, p2 = circle_point(0, 25), circle_point(1, 145)
@@ -448,8 +457,8 @@ def draw_circle(center, radius, labels=None, features=None, point_angles=None,
                                       edgecolor=COLORS['angle_edge'], alpha=0.65,
                                       zorder=2.5)
                 ax.add_patch(wedge)
-            _label_point(ax, p1, circle_label(0, 'A'), offset=(10, 8), use_greek=use_greek)
-            _label_point(ax, p2, circle_label(1, 'B'), offset=(-16, 8), use_greek=use_greek)
+            label_circle_point(0, p1, 'A', offset=(10, 8))
+            label_circle_point(1, p2, 'B', offset=(-16, 8))
 
         if feat_lower == 'inscribed_angle':
             p1, p2 = circle_point(0, 20), circle_point(1, 150)
@@ -458,9 +467,9 @@ def draw_circle(center, radius, labels=None, features=None, point_angles=None,
                     color=COLORS['auxiliary3'], linewidth=1.8, zorder=3)
             ax.plot([vertex[0], p2[0]], [vertex[1], p2[1]], '-',
                     color=COLORS['auxiliary3'], linewidth=1.8, zorder=3)
-            _label_point(ax, p1, circle_label(0, 'A'), offset=(10, 8), use_greek=use_greek)
-            _label_point(ax, p2, circle_label(1, 'B'), offset=(-16, 8), use_greek=use_greek)
-            _label_point(ax, vertex, circle_label(2, 'C'), offset=(8, -18), use_greek=use_greek)
+            label_circle_point(0, p1, 'A', offset=(10, 8))
+            label_circle_point(1, p2, 'B', offset=(-16, 8))
+            label_circle_point(2, vertex, 'C', offset=(8, -18))
     
     # Auto-adjust limits
     margin = r * 0.6
