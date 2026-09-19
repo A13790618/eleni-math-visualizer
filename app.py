@@ -201,7 +201,11 @@ def api_geometry():
             center = data.get('center', [0, 0])
             radius = data.get('radius', 2)
             circle_labels = data.get('labels', {})
+            point_labels = data.get('point_labels')
             if isinstance(circle_labels, list):
+                # ["O", "A", "B"] → centre O, points on the circle A, B (textbook order)
+                if point_labels is None and len(circle_labels) > 1:
+                    point_labels = circle_labels[1:]
                 circle_labels = {'center': circle_labels[0] if circle_labels else 'O'}
             
             buf = draw_circle(
@@ -210,7 +214,7 @@ def api_geometry():
                 labels=circle_labels,
                 features=features,
                 point_angles=data.get('point_angles'),
-                point_labels=data.get('point_labels'),
+                point_labels=point_labels,
                 title=title,
                 show_grid=show_grid,
                 show_axis=show_axis,
