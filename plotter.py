@@ -338,6 +338,10 @@ def plot_function(formulas, x_range=(-10, 10), y_range=None, show_features=None,
                 pass
     
     # Shade between curves or under curve
+    # Coze's Test Run and the LLM often submit an empty `shade: {}` (or one with
+    # only null values). That means "no shading", not "shade the whole domain".
+    if shade_between and not any(v is not None for v in shade_between.values()):
+        shade_between = None
     if shade_between:
         x_start = shade_between.get('x_start', x_range[0])
         x_end = shade_between.get('x_end', x_range[1])
@@ -354,13 +358,13 @@ def plot_function(formulas, x_range=(-10, 10), y_range=None, show_features=None,
             y2_shade = _evaluate(expr2, x2, x_shade)
             
             ax.fill_between(x_shade, y1_shade, y2_shade, alpha=0.3,
-                          color=SHADE_COLOR, zorder=2, label='Area')
+                          color=SHADE_COLOR, zorder=2, label='Εμβαδόν')
         else:
             expr0, x0 = parsed_exprs[0]
             y0_shade = _evaluate(expr0, x0, x_shade)
             
             ax.fill_between(x_shade, 0, y0_shade, alpha=0.3,
-                          color=SHADE_COLOR, zorder=2, label='Area')
+                          color=SHADE_COLOR, zorder=2, label='Εμβαδόν')
     
     # Set axis limits
     if y_range:
