@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://eleni-math-visualizer.onrender.com",
+      "url": "https://greekmathspace-visualizer.onrender.com",
       "description": "Live Public HTTPS Server (Render)"
     },
     {
@@ -309,13 +309,21 @@
                   "type": "number",
                   "description": "Y coordinate"
                 }
-              },
-              "required": [
-                "x",
-                "y"
-              ]
+              }
             },
             "description": "Vertex points, e.g. [{\"x\":0,\"y\":0},{\"x\":4,\"y\":0},{\"x\":2,\"y\":3}]"
+          },
+          "side": {
+            "type": "number",
+            "description": "Side length for square, equilateral triangle, or cube"
+          },
+          "width": {
+            "type": "number",
+            "description": "Width for rectangle or prism"
+          },
+          "height": {
+            "type": "number",
+            "description": "Height for rectangle, triangle, or 3D solid"
           },
           "center": {
             "type": "array",
