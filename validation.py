@@ -124,25 +124,117 @@ def validate_geometry_request(data):
             raise ValidationError(f"{field} must be a boolean")
 
     if shape == "triangle":
-        result["vertices"] = _points(data.get("vertices"), 3)
-        a, b, c = result["vertices"]
-        twice_area = abs((b[0] - a[0]) * (c[1] - a[1])
-                         - (b[1] - a[1]) * (c[0] - a[0]))
-        if twice_area <= 1e-10:
-            raise ValidationError("triangle vertices must not be collinear")
-        result["labels"] = _labels(data.get("labels"), 3)
+        raw_vertices = data.get("vertices")
+        if raw_vertices is None:
+            dims = data.get("dimensions") or {}
+            side = data.get("side") or dims.get("side")
+            if side is not None:
+                try:
+                    s = float(side)
+                    if s > 0:
+                        h = s * math.sqrt(3) / 2.0
+                        result["vertices"] = [[0.0, 0.0], [s, 0.0], [s / 2.0, round(h, 3)]]
+                        if not data.get("title"):
+                            result["title"] = f"Ισόπλευρο τρίγωνο (πλευρά = {s:g})"
+                    else:
+                        result["vertices"] = [[0.0, 0.0], [4.0, 0.0], [2.0, 3.0]]
+                except (ValueError, TypeError):
+                    result["vertices"] = [[0.0, 0.0], [4.0, 0.0], [2.0, 3.0]]
+            else:
+                result["vertices"] = [[0.0, 0.0], [4.0, 0.0], [2.0, 3.0]]
+        else:
+            result["vertices"] = _points(raw_vertices, 3)
+            a, b, c = result["vertices"]
+            twice_area = abs((b[0] - a[0]) * (c[1] - a[1])
+                             - (b[1] - a[1]) * (c[0] - a[0]))
+            if twice_area <= 1e-10:
+                raise ValidationError("triangle vertices must not be collinear")
+        result["labels"] = _labels(data.get("labels"), 3) or ['Α', 'Β', 'Γ']
+
     elif shape in {"quadrilateral", "square", "rectangle", "parallelogram", "rhombus", "trapezoid"}:
-        result["vertices"] = _points(data.get("vertices"), 4)
-        result["labels"] = _labels(data.get("labels"), 4)
+        raw_vertices = data.get("vertices")
+        if raw_vertices is None:
+            dims = data.get("dimensions") or {}
+            if shape == "square":
+                raw_side = (data.get("side")
+                            or dims.get("side")
+                            or data.get("width")
+                            or dims.get("width")
+                            or data.get("length")
+                            or dims.get("length")
+                            or 4.0)
+                try:
+                    side = float(raw_side)
+                    if side <= 0:
+                        side = 4.0
+                except (ValueError, TypeError):
+                    side = 4.0
+                result["vertices"] = [[0.0, 0.0], [side, 0.0], [side, side], [0.0, side]]
+                if not data.get("title"):
+                    result["title"] = f"Τετράγωνο (πλευρά = {side:g})"
+                if "right_angles" not in features:
+                    features.append("right_angles")
+            elif shape == "rectangle":
+                raw_w = (data.get("width")
+                         or dims.get("width")
+                         or data.get("length")
+                         or dims.get("length")
+                         or data.get("base")
+                         or 5.0)
+                raw_h = (data.get("height")
+                         or dims.get("height")
+                         or data.get("depth")
+                         or dims.get("depth")
+                         or 3.0)
+                try:
+                    w = float(raw_w)
+                    h = float(raw_h)
+                    if w <= 0:
+                        w = 5.0
+                    if h <= 0:
+                        h = 3.0
+                except (ValueError, TypeError):
+                    w, h = 5.0, 3.0
+                result["vertices"] = [[0.0, 0.0], [w, 0.0], [w, h], [0.0, h]]
+                if not data.get("title"):
+                    result["title"] = f"Ορθογώνιο ({w:g} x {h:g})"
+                if "right_angles" not in features:
+                    features.append("right_angles")
+            elif shape == "parallelogram":
+                result["vertices"] = [[0.0, 0.0], [4.0, 0.0], [5.0, 2.5], [1.0, 2.5]]
+                if not data.get("title"):
+                    result["title"] = "Παραλληλόγραμμο"
+            elif shape == "rhombus":
+                result["vertices"] = [[0.0, 1.5], [2.0, 3.0], [4.0, 1.5], [2.0, 0.0]]
+                if not data.get("title"):
+                    result["title"] = "Ρόμβος"
+            elif shape == "trapezoid":
+                result["vertices"] = [[0.0, 0.0], [5.0, 0.0], [3.5, 3.0], [1.5, 3.0]]
+                if not data.get("title"):
+                    result["title"] = "Τραπέζιο"
+            else:
+                result["vertices"] = [[0.0, 0.0], [4.0, 0.0], [3.0, 3.0], [1.0, 2.5]]
+        else:
+            result["vertices"] = _points(raw_vertices, 4)
+        result["labels"] = _labels(data.get("labels"), 4) or ['Α', 'Β', 'Γ', 'Δ']
+
     elif shape == "circle":
         result["center"] = _point(data.get("center", [0, 0]), "center")
-        result["radius"] = _finite_number(data.get("radius"), "radius")
-        if result["radius"] <= 0:
-            raise ValidationError("radius must be greater than zero")
+        raw_radius = data.get("radius")
+        if raw_radius is None:
+            dims = data.get("dimensions") or {}
+            raw_radius = dims.get("radius") or data.get("r") or 2.0
+        try:
+            radius = float(raw_radius)
+            if radius <= 0:
+                radius = 2.0
+        except (ValueError, TypeError):
+            radius = 2.0
+        result["radius"] = _finite_number(radius, "radius")
         result["labels"] = _labels(data.get("labels"))
         angles = data.get("point_angles", [45, 145, 255])
         if not isinstance(angles, list) or not 1 <= len(angles) <= 8:
-            raise ValidationError("point_angles must contain between 1 and 8 angles")
+            angles = [45, 145, 255]
         result["point_angles"] = [_finite_number(angle, "point_angles") for angle in angles]
         required_points = 1
         if set(features) & {"chord", "chord_ab", "central_angle", "sector"}:
@@ -159,8 +251,10 @@ def validate_geometry_request(data):
                     or len(point_labels) != len(result["point_angles"])
                     or any(not isinstance(label, str) or not label.strip()
                            for label in point_labels)):
-                raise ValidationError("point_labels must match point_angles and contain non-empty strings")
-            result["point_labels"] = [label.strip()[:20] for label in point_labels]
+                result["point_labels"] = None
+            else:
+                result["point_labels"] = [label.strip()[:20] for label in point_labels]
+
     elif shape == "angle":
         result["vertex"] = _point(data.get("vertex", [0, 0]), "vertex")
         result["ray1_end"] = _point(data.get("ray1_end", [3, 0]), "ray1_end")
@@ -173,33 +267,58 @@ def validate_geometry_request(data):
         if angle_label is not None and (not isinstance(angle_label, str)
                                         or not angle_label.strip()
                                         or len(angle_label) > 20):
-            raise ValidationError("angle_label must be a non-empty string up to 20 characters")
+            result["angle_label"] = "α"
+
     elif shape in {"parallel_lines", "parallel"}:
         angle = _finite_number(data.get("transversal_angle", 60), "transversal_angle")
         if not 5 <= angle <= 175 or abs(angle - 90) < 0.001:
-            raise ValidationError("transversal_angle must be between 5 and 175 degrees and not 90")
+            angle = 60.0
         result["transversal_angle"] = angle
+
     else:
         solid = data.get("shape_type", shape)
         if not isinstance(solid, str):
-            raise ValidationError("shape_type must be a string")
+            solid = shape
         solid = solid.strip().lower()
         if solid == "3d_shape":
-            raise ValidationError("shape_type is required when shape is 3d_shape")
+            solid = "cube"
         if solid not in SOLID_DIMENSIONS:
             raise ValidationError(f"Unsupported solid shape: {solid}")
-        dimensions = data.get("dimensions", {})
-        if not isinstance(dimensions, dict):
-            raise ValidationError("dimensions must be an object")
+
+        DEFAULT_SOLID_DIMS = {
+            'cylinder': {'radius': 2.0, 'height': 5.0},
+            'cone': {'radius': 2.0, 'height': 4.0},
+            'pyramid': {'base_width': 3.0, 'base_depth': 3.0, 'height': 4.0},
+            'square_pyramid': {'base_width': 3.0, 'base_depth': 3.0, 'height': 4.0},
+            'prism': {'width': 3.0, 'depth': 2.0, 'height': 4.0},
+            'cube': {'side': 3.0},
+            'sphere': {'radius': 2.5}
+        }
+
+        dimensions = dict(data.get("dimensions") or {})
         allowed = SOLID_DIMENSIONS[solid]
-        unknown_dimensions = sorted(set(dimensions) - allowed)
-        if unknown_dimensions:
-            raise ValidationError(f"Unsupported dimension(s) for {solid}: {', '.join(unknown_dimensions)}")
+        # Also inspect top-level data for dimensions if omitted inside dimensions dict
+        for param in allowed:
+            if param not in dimensions and param in data:
+                dimensions[param] = data[param]
+            elif param not in dimensions and param == 'base_width' and 'side' in data:
+                dimensions['base_width'] = data['side']
+            elif param not in dimensions and param == 'base_depth' and 'side' in data:
+                dimensions['base_depth'] = data['side']
+
+        # Fill missing dimensions with sensible defaults
+        defaults = DEFAULT_SOLID_DIMS[solid]
+        for key, def_val in defaults.items():
+            if key not in dimensions:
+                dimensions[key] = def_val
+
         cleaned_dimensions = {}
-        for key, value in dimensions.items():
-            cleaned_dimensions[key] = _finite_number(value, f"dimensions.{key}")
+        for key in allowed:
+            val = dimensions.get(key, defaults.get(key, 2.0))
+            cleaned_dimensions[key] = _finite_number(val, f"dimensions.{key}")
             if cleaned_dimensions[key] <= 0 or cleaned_dimensions[key] > 10000:
-                raise ValidationError(f"dimensions.{key} must be greater than zero and at most 10000")
+                cleaned_dimensions[key] = defaults.get(key, 2.0)
+
         result["shape_type"] = solid
         result["dimensions"] = cleaned_dimensions
 
